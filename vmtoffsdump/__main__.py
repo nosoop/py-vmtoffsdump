@@ -112,10 +112,10 @@ def guesstimate_windows_mapping(typename):
 	base_vmt, *inherited_vmts = get_class_vtables(f'_ZTV{typename}')
 	
 	vtable_thunks_by_name = {
-		# strip prefix 'non-virtual thunk to '
+		# strip prefix 'non-virtual thunk to '; ignore destructor thunks
 		demangle(fn.name)[21:]: (n, fn)
 		for n, fn in enumerate(list(itertools.chain(base_vmt, *inherited_vmts)))
-		if fn and fn.name.startswith('_ZThn')
+		if fn and fn.name.startswith('_ZThn') and demangle(fn.name).find('::~') == -1
 	}
 	
 	# MSVC places overloaded functions next to each other, so scan for them...
@@ -134,29 +134,27 @@ def guesstimate_windows_mapping(typename):
 	for sym, *other_overloads in vtable_fn_overloads.values():
 		if len(other_overloads) == 0:
 			continue
+		# remove them first
 		base_vmt = [ s for s in base_vmt if s not in other_overloads ]
+		
+		if demangle(sym.name).find('::~') != -1:
+			# skip destructor overloads, as MSVC doesn't generate those
+			# ... I think? asherkin's impl only ignored consecutive dtors
+			# but I think overloaded makes more sense
+			continue
+		
 		position = base_vmt.index(sym)
 		base_vmt[position:position] = reversed(other_overloads)
 	
-	for n, (cur_sym, next_sym) in enumerate(pairwise_longest(base_vmt)):
-		if not next_sym:
-			yield cur_sym
+	for n, sym in enumerate(base_vmt):
+		demangled_name = demangle(sym.name)
+		
+		# skip functions with thunks further down the vtable
+		thunk_index, thunk_sym = vtable_thunks_by_name.get(demangled_name, (None, None))
+		if thunk_sym and thunk_index > n:
 			continue
 		
-		if cur_sym:
-			cur_name, next_name = (demangle(n) for n in [ cur_sym.name, next_sym.name ])
-			
-			# skip consecutive destructors, as MSVC doesn't generate those
-			if next_name.find('::~') != -1 and cur_name == next_name:
-				continue
-			
-			# skip functions with thunks further down the vtable
-			# unless it's a destructor, which we keep
-			thunk_index, thunk_sym = vtable_thunks_by_name.get(cur_name, (None, None))
-			if thunk_sym and thunk_index > n and cur_name.find('::~') == -1:
-				continue
-		
-		yield cur_sym
+		yield sym
 
 @functools.cache
 def get_class_hierarchy(typeinfo):
