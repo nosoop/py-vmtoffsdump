@@ -180,7 +180,13 @@ def get_class_hierarchy(typeinfo):
 	print('unknown typeinfo class', typeinfo_class)
 	return [ typeinfo_name ]
 
-for n, f in enumerate(guesstimate_windows_mapping('11CBaseObject')):
-	if not f:
-		continue
-	print(n, demangle(f.name))
+def render_vtable(typename):
+	linux_vmt, *_ = get_class_vtables(f'_ZTV{typename}')
+	windows_vmt = list(guesstimate_windows_mapping(typename))
+	
+	for n, f in enumerate(linux_vmt):
+		try:
+			wi = windows_vmt.index(f)
+		except ValueError:
+			wi = None
+		print('L:{:3d}'.format(n), 'W:{:3d}'.format(wi) if wi is not None else '     ', demangle(f.name))
