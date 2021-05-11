@@ -62,13 +62,6 @@ def get_function_from_virtual(addr):
 			fn = imported_function_by_name.get(rel.symbol.name, None)
 	return fn
 
-def get_vtable_fns(vt_name):
-	vt = elf_binary.get_symbol(vt_name)
-	# print(f"size = {sym['st_size'] // 4}")
-	yield from itertools.islice((
-		get_function_from_virtual(vt.value + offs) for offs in range(0, vt.size, 4)
-	), 2, None)
-
 def get_class_vtables(vt_name):
 	vt = elf_binary.get_symbol(vt_name)
 	
@@ -111,61 +104,7 @@ def get_base_class_containing_vtable_index(subclass, vti):
 			return current
 	return subclass
 
-def guesstimate_windows_mapping(vtable_fns, classname):
-	"""
-	Given an ordered list of functions within a Linux vtable, yield the order they are
-	predicted to be in on Windows.  Some entries may be skipped.
-	"""
-	# we have to get the full vtable since we have to do lookaheads across the whole thing
-	vtable_full = list(vtable_fns)
-	
-	vtable_thunks_by_name = {
-		# strip prefix 'non-virtual thunk to '
-		demangle(fn.name)[21:]: (n, fn)
-		for n, fn in enumerate(vtable_full) if fn and fn.name.startswith('_ZThn')
-	}
-	
-	# MSVC places overloaded functions next to each other, so scan for them...
-	vtable_fn_overloads = collections.defaultdict(list)
-	for n, sym in enumerate(vtable_full):
-		if not sym or not sym.name or not sym.name.startswith('_ZN'):
-			continue
-		method_name = demangle(sym.name)
-		
-		# group them based on the superclass that contains them (i.e., in the same vtable)
-		base_class_with_fn = get_base_class_containing_vtable_index(classname, vtable_full.index(sym))
-		overload_key = base_class_with_fn + method_name[:method_name.rfind('(')]
-		vtable_fn_overloads[overload_key].append(sym)
-	
-	# ... then insert them in reverse order before the first one, because MSVC does that too
-	for sym, *other_overloads in vtable_fn_overloads.values():
-		if len(other_overloads) == 0:
-			continue
-		vtable_full = [ s for s in vtable_full if s not in other_overloads ]
-		position = vtable_full.index(sym)
-		vtable_full[position:position] = reversed(other_overloads)
-	
-	for n, (cur_sym, next_sym) in enumerate(pairwise_longest(vtable_full)):
-		if not next_sym:
-			yield cur_sym
-			continue
-		
-		if cur_sym:
-			cur_name, next_name = (demangle(n) for n in [ cur_sym.name, next_sym.name ])
-			
-			# skip consecutive destructors, as MSVC doesn't generate those
-			if next_name.find('::~') != -1 and cur_name == next_name:
-				continue
-			
-			# skip functions with thunks further down the vtable
-			# unless it's a destructor, which we keep
-			thunk_index, thunk_sym = vtable_thunks_by_name.get(cur_name, (None, None))
-			if thunk_sym and thunk_index > n and cur_name.find('::~') == -1:
-				continue
-		
-		yield cur_sym
-
-def guesstimate_windows_mapping_ex(typename):
+def guesstimate_windows_mapping(typename):
 	"""
 	Given an ordered list of functions within a Linux vtable, yield the order they are
 	predicted to be in on Windows.  Some entries may be skipped.
@@ -241,10 +180,7 @@ def get_class_hierarchy(typeinfo):
 	print('unknown typeinfo class', typeinfo_class)
 	return [ typeinfo_name ]
 
-# for n, f in enumerate(guesstimate_windows_mapping(get_vtable_fns('_ZTV9CTFPlayer'), '9CTFPlayer')):
-#for n, f in enumerate(guesstimate_windows_mapping(get_vtable_fns('_ZTV9CTFPlayer'), '9CTFPlayer')):
-for n, f in enumerate(guesstimate_windows_mapping_ex('11CBaseObject')):
-# for n, f in enumerate(get_vtable_fns('_ZTV9CTFPlayer')):
+for n, f in enumerate(guesstimate_windows_mapping('11CBaseObject')):
 	if not f:
 		continue
 	print(n, demangle(f.name))
