@@ -62,22 +62,28 @@ def get_function_from_virtual(addr):
 			fn = imported_function_by_name.get(rel.symbol.name, None)
 	return fn
 
-def get_class_vtables(vt_name):
-	vt = elf_binary.get_symbol(vt_name)
+@functools.cache
+def get_class_vtables(typename):
+	"""
+	Returns a list of lists of vtable functions, one for each table in the class.
+	"""
+	vt = elf_binary.get_symbol(f'_ZTV{typename}')
 	
 	# vtables are delimited by offset to base class + typeinfo
 	# so the current table is complete once we run into a non-function
-	vtable_entries = []
+	vtable_list = []
+	current_vtable_entries = []
 	for offs in range(0, vt.size, 4):
 		fn = get_function_from_virtual(vt.value + offs)
 		
 		if fn:
-			vtable_entries.append(fn)
-		elif len(vtable_entries):
-			yield vtable_entries.copy()
-			vtable_entries.clear()
-	if len(vtable_entries):
-		yield vtable_entries.copy()
+			current_vtable_entries.append(fn)
+		elif len(current_vtable_entries):
+			vtable_list.append(current_vtable_entries.copy())
+			current_vtable_entries.clear()
+	if len(current_vtable_entries):
+		vtable_list.append(current_vtable_entries.copy())
+	return vtable_list
 
 def pairwise_longest(iterable):
 	"""
@@ -109,7 +115,7 @@ def guesstimate_windows_mapping(typename):
 	Given an ordered list of functions within a Linux vtable, yield the order they are
 	predicted to be in on Windows.  Some entries may be skipped.
 	"""
-	base_vmt, *inherited_vmts = get_class_vtables(f'_ZTV{typename}')
+	base_vmt, *inherited_vmts = get_class_vtables(typename)
 	
 	vtable_thunks_by_name = {
 		# strip prefix 'non-virtual thunk to '; ignore destructor thunks
@@ -179,7 +185,7 @@ def get_class_hierarchy(typeinfo):
 	return [ typeinfo_name ]
 
 def render_vtable(typename):
-	linux_vmt, *_ = get_class_vtables(f'_ZTV{typename}')
+	linux_vmt, *_ = get_class_vtables(typename)
 	windows_vmt = list(guesstimate_windows_mapping(typename))
 	
 	for n, f in enumerate(linux_vmt):
