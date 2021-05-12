@@ -7,11 +7,10 @@ import struct
 import pickle
 import collections
 import pathlib
+import functools
 
 # lief doesn't seem to handle linux demangles yet
 import pydemangler
-
-import functools
 
 parser = argparse.ArgumentParser()
 
@@ -21,10 +20,7 @@ args = parser.parse_args()
 
 elf_binary = lief.parse(str(args.binary))
 
-# this is slow.
 function_map = { f.address: f for f in elf_binary.functions }
-symbol_map = { s.value: s for s in elf_binary.static_symbols }
-
 imported_function_by_name = { f.name: f for f in elf_binary.imported_functions }
 
 def dereference(addr):
@@ -167,18 +163,23 @@ def get_class_hierarchy(typeinfo):
 	"""
 	Returns a list of mangled typenames in ascending order (towards base classes at the end).
 	"""
-	typeinfo_class = elf_binary.get_relocation(typeinfo.value)
-	typeinfo_name = unpack_string(dereference(typeinfo.value + 0x04))
+	return get_class_hierarchy_internal(typeinfo.value)
+
+@functools.cache
+def get_class_hierarchy_internal(typeinfo_ptr):
+	"""
+	Returns a list of mangled typenames in ascending order (towards base classes at the end).
+	"""
+	typeinfo_class = elf_binary.get_relocation(typeinfo_ptr)
+	typeinfo_name = unpack_string(dereference(typeinfo_ptr + 0x04))
 	if typeinfo_class.symbol.name == '_ZTVN10__cxxabiv120__si_class_type_infoE':
 		# single inheritance
-		nested_type = symbol_map.get(dereference(typeinfo.value + 0x08), None)
-		if nested_type:
-			return [ typeinfo_name ] + get_class_hierarchy(nested_type)
+		nested_typeinfo_ptr = dereference(typeinfo_ptr + 0x08)
+		return [ typeinfo_name ] + get_class_hierarchy_internal(nested_typeinfo_ptr)
 	elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv121__vmi_class_type_infoE':
 		# multiple inheritance
-		nested_type = symbol_map.get(dereference(typeinfo.value + 0x10), None)
-		if nested_type:
-			return [ typeinfo_name ] + get_class_hierarchy(nested_type)
+		nested_typeinfo_ptr = dereference(typeinfo_ptr + 0x10)
+		return [ typeinfo_name ] + get_class_hierarchy_internal(nested_typeinfo_ptr)
 	elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv117__class_type_infoE':
 		return [ typeinfo_name ]
 	print('unknown typeinfo class', typeinfo_class)
