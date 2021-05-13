@@ -81,15 +81,6 @@ def get_class_vtables(typename):
 		vtable_list.append(current_vtable_entries.copy())
 	return vtable_list
 
-def pairwise_longest(iterable):
-	"""
-	Yields a tuple containing the current and next item in an iterable.
-	Continues until the function yields (iterable[-1], None)
-	"""
-	a, b = itertools.tee(iterable)
-	next(b, None)
-	return itertools.zip_longest(a, b, fillvalue = None)
-
 @functools.cache
 def get_sym(name):
 	return elf_binary.get_symbol(name)
@@ -98,10 +89,12 @@ def get_base_class_containing_vtable_index(subclass, vti):
 	"""
 	Returns the topmost class containing the given vtable index.
 	"""
-	for current, next in pairwise_longest(get_class_hierarchy(get_sym(f'_ZTI{subclass}'))):
-		if next is None:
+	current_iter, next_iter = itertools.tee(get_class_hierarchy(get_sym(f'_ZTI{subclass}')))
+	next(next_iter, None)
+	for current, nextitem in itertools.zip_longest(current_iter, next_iter, fillvalue = None):
+		if nextitem is None:
 			return current
-		vt_info = get_sym(f'_ZTV{next}')
+		vt_info = get_sym(f'_ZTV{nextitem}')
 		if (vt_info.size // 4) - 2 <= vti:
 			return current
 	return subclass
