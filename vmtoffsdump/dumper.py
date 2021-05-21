@@ -3,7 +3,7 @@ import struct
 import collections
 import functools
 
-# lief doesn't seem to handle linux demangles yet
+# lief only demangles on unix-based systems
 import pydemangler
 
 class VTableDumper:
@@ -39,6 +39,10 @@ class VTableDumper:
 		return ""
 
 	def get_function_from_virtual(self, addr):
+		"""
+		Attempts to find a function from the pointer read from `addr`, falling back to finding a
+		relocation entry for `addr`.
+		"""
 		a, = struct.unpack('I', bytes(self.binary.get_content_from_virtual_address(addr, 4)))
 		fn = self.function_map.get(a, None)
 		if fn is None:
@@ -79,9 +83,7 @@ class VTableDumper:
 		"""
 		Returns the topmost class containing the given vtable index.
 		"""
-		current_iter, next_iter = itertools.tee(
-			self.get_class_hierarchy(self.get_sym(f'_ZTI{subclass}'))
-		)
+		current_iter, next_iter = itertools.tee(self.get_class_hierarchy(subclass))
 		next(next_iter, None)
 		for current, nextitem in itertools.zip_longest(current_iter, next_iter, fillvalue = None):
 			if nextitem is None:
@@ -144,16 +146,18 @@ class VTableDumper:
 			yield sym
 
 	@functools.cache
-	def get_class_hierarchy(self, typeinfo):
+	def get_class_hierarchy(self, typename):
 		"""
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
 		"""
+		typeinfo = self.get_sym(f'_ZTI{typename}')
 		return self.get_class_hierarchy_internal(typeinfo.value)
 
 	@functools.cache
 	def get_class_hierarchy_internal(self, typeinfo_ptr):
 		"""
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
+		This takes a pointer to the class's typeinfo structure.
 		"""
 		typeinfo_class = self.binary.get_relocation(typeinfo_ptr)
 		typeinfo_name = self.unpack_string(self.dereference(typeinfo_ptr + 0x04))
