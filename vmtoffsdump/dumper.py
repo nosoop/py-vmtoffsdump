@@ -38,16 +38,15 @@ class VTableDumper:
 			pass
 		return ""
 
-	def get_function_from_virtual(self, addr):
+	def _get_function_from_raw_addr(self, raw_addr, fn_addr):
 		"""
-		Attempts to find a function from the pointer read from `addr`, falling back to finding a
-		relocation entry for `addr`.
+		Attempts to find a function from the pointer read from `fn_addr`, falling back to
+		finding a relocation entry for `raw_addr`.
 		"""
-		a, = struct.unpack('I', bytes(self.binary.get_content_from_virtual_address(addr, 4)))
-		fn = self.function_map.get(a, None)
+		fn = self.function_map.get(fn_addr, None)
 		if fn is None:
 			# resolve relocations
-			rel = self.binary.get_relocation(addr)
+			rel = self.binary.get_relocation(raw_addr)
 			if rel is not None and rel.has_symbol and rel.symbol.is_function:
 				fn = self.imported_function_by_name.get(rel.symbol.name, None)
 		return fn
@@ -63,9 +62,13 @@ class VTableDumper:
 		# so the current table is complete once we run into a non-function
 		vtable_list = []
 		current_vtable_entries = []
-		for offs in range(0, vt.size, 4):
-			fn = self.get_function_from_virtual(vt.value + offs)
-			
+		
+		addrs = zip(
+			( offs + vt.value for offs in range(0, vt.size, 4) ),
+			( v for v, *_ in struct.iter_unpack('I', bytes(self.binary.get_content_from_virtual_address(vt.value, vt.size))) )
+		)
+		for raw_addr, fn_addr in addrs:
+			fn = self._get_function_from_raw_addr(raw_addr, fn_addr)
 			if fn:
 				current_vtable_entries.append(fn)
 			elif len(current_vtable_entries):
