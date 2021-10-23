@@ -54,7 +54,7 @@ class VTableProcessor:
 				fn = self.imported_function_by_name.get(rel.symbol.name, None)
 		return fn
 
-	@functools.cache
+	@functools.lru_cache(maxsize = None)
 	def get_class_vtables(self, typename):
 		"""
 		Returns a list of lists of vtable functions, one for each table in the class.
@@ -82,7 +82,7 @@ class VTableProcessor:
 			vtable_list.append(current_vtable_entries.copy())
 		return vtable_list
 
-	@functools.cache
+	@functools.lru_cache(maxsize = None)
 	def get_sym(self, name):
 		return self.binary.get_symbol(name)
 
@@ -153,7 +153,7 @@ class VTableProcessor:
 			
 			yield sym
 
-	@functools.cache
+	@functools.lru_cache(maxsize = None)
 	def get_class_hierarchy(self, typename):
 		"""
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
@@ -161,7 +161,7 @@ class VTableProcessor:
 		typeinfo = self.get_sym(f'_ZTI{typename}')
 		return self._get_class_hierarchy_from_ptr(typeinfo.value)
 
-	@functools.cache
+	@functools.lru_cache(maxsize = None)
 	def _get_class_hierarchy_from_ptr(self, typeinfo_ptr):
 		"""
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
