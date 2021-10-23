@@ -96,8 +96,10 @@ class VTableProcessor:
 			if nextitem is None:
 				# we've reached the base class
 				return current
-			vt_info = self.get_sym(f'_ZTV{nextitem}')
-			if (vt_info.size // 4) - 2 <= vti:
+			# we need to process the parent class vtable to find out how long it is,
+			# since it may be multiple inheritance (we only care about the first table)
+			vt_first, *_ = self.get_class_vtables(nextitem)
+			if len(vt_first) <= vti:
 				return current
 		return subclass
 
