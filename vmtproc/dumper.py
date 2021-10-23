@@ -6,18 +6,18 @@ import functools
 # lief only demangles on unix-based systems
 import pydemangler
 
-class VTableDumper:
+class VTableProcessor:
 
 	def __init__(self, binary):
 		self.binary = binary
 		self.function_map = { f.address: f for f in self.binary.functions }
 		self.imported_function_by_name = { f.name: f for f in self.binary.imported_functions }
 
-	def dereference(self, addr):
+	def _dereference(self, addr):
 		a, = struct.unpack('I', bytes(self.binary.get_content_from_virtual_address(addr, 4)))
 		return a
 
-	def demangle(self, input):
+	def _demangle(self, input):
 		''' demangles a symbol '''
 		# I don't think we actually need demangler, but I don't feel like figuring out the
 		# symbol format at the moment
@@ -26,7 +26,7 @@ class VTableDumper:
 		}
 		return pydemangler.demangle(input) or fallbacks.get(input, input)
 
-	def unpack_string(self, addr, encoding = 'utf-8', chunk = 16, **kwargs):
+	def _unpack_string(self, addr, encoding = 'utf-8', chunk = 16, **kwargs):
 		''' unpacks a variable-length, zero-terminated string from the binary '''
 		try:
 			unpacker = itertools.takewhile(
@@ -110,9 +110,9 @@ class VTableDumper:
 		
 		vtable_thunks_by_name = {
 			# strip prefix 'non-virtual thunk to '; ignore destructor thunks
-			self.demangle(fn.name)[21:]: (n, fn)
+			self._demangle(fn.name)[21:]: (n, fn)
 			for n, fn in enumerate(list(itertools.chain(base_vmt, *inherited_vmts)))
-			if fn and fn.name.startswith('_ZThn') and self.demangle(fn.name).find('::~') == -1
+			if fn and fn.name.startswith('_ZThn') and self._demangle(fn.name).find('::~') == -1
 		}
 		
 		# MSVC places overloaded functions next to each other, so scan for them...
@@ -120,7 +120,7 @@ class VTableDumper:
 		for sym in base_vmt:
 			if not sym or not sym.name or not sym.name.startswith('_ZN'):
 				continue
-			method_name = self.demangle(sym.name)
+			method_name = self._demangle(sym.name)
 			
 			# group them based on the superclass that contains them (i.e., in the same vtable)
 			base_class_with_fn = self.get_base_class_containing_vtable_index(typename, base_vmt.index(sym))
@@ -134,7 +134,7 @@ class VTableDumper:
 			# remove them first
 			base_vmt = [ s for s in base_vmt if s not in other_overloads ]
 			
-			if self.demangle(sym.name).find('::~') != -1:
+			if self._demangle(sym.name).find('::~') != -1:
 				# skip destructor overloads, as MSVC doesn't generate those
 				# ... I think? asherkin's impl only ignored consecutive dtors
 				# but I think overloaded makes more sense
@@ -144,7 +144,7 @@ class VTableDumper:
 			base_vmt[position:position] = reversed(other_overloads)
 		
 		for n, sym in enumerate(base_vmt):
-			demangled_name = self.demangle(sym.name)
+			demangled_name = self._demangle(sym.name)
 			
 			# skip functions with thunks further down the vtable
 			thunk_index, thunk_sym = vtable_thunks_by_name.get(demangled_name, (None, None))
@@ -168,14 +168,14 @@ class VTableDumper:
 		This takes a pointer to the class's typeinfo structure.
 		"""
 		typeinfo_class = self.binary.get_relocation(typeinfo_ptr)
-		typeinfo_name = self.unpack_string(self.dereference(typeinfo_ptr + 0x04))
+		typeinfo_name = self._unpack_string(self._dereference(typeinfo_ptr + 0x04))
 		if typeinfo_class.symbol.name == '_ZTVN10__cxxabiv120__si_class_type_infoE':
 			# single inheritance
-			nested_typeinfo_ptr = self.dereference(typeinfo_ptr + 0x08)
+			nested_typeinfo_ptr = self._dereference(typeinfo_ptr + 0x08)
 			return [ typeinfo_name ] + self._get_class_hierarchy_from_ptr(nested_typeinfo_ptr)
 		elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv121__vmi_class_type_infoE':
 			# multiple inheritance
-			nested_typeinfo_ptr = self.dereference(typeinfo_ptr + 0x10)
+			nested_typeinfo_ptr = self._dereference(typeinfo_ptr + 0x10)
 			return [ typeinfo_name ] + self._get_class_hierarchy_from_ptr(nested_typeinfo_ptr)
 		elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv117__class_type_infoE':
 			return [ typeinfo_name ]

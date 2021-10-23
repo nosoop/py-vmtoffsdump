@@ -10,9 +10,6 @@ Originally written to automate the process of obtaining that info from Team Fort
 
 Depends on [LIEF][] for ELF parsing and [pydemangler][] for symbol demangling.
 
-Still requires work for library usage, but at the moment you'll need to drop into an interactive
-Python shell, then provide a mangled typename to `render_vtable()`:
-
 ```
 $ python -m pip install --user git+https://github.com/nosoop/py-vmtoffsdump
 ```
