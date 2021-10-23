@@ -18,6 +18,9 @@ class VTableDumper:
 		return a
 
 	def demangle(self, input):
+		''' demangles a symbol '''
+		# I don't think we actually need demangler, but I don't feel like figuring out the
+		# symbol format at the moment
 		fallbacks = {
 			'__cxa_pure_virtual': '(pure virtual function)',
 		}
@@ -40,8 +43,8 @@ class VTableDumper:
 
 	def _get_function_from_raw_addr(self, raw_addr, fn_addr):
 		"""
-		Attempts to find a function from the pointer read from `fn_addr`, falling back to
-		finding a relocation entry for `raw_addr`.
+		Attempts to find a function from `fn_addr`, falling back to finding a relocation entry
+		for `raw_addr`.
 		"""
 		fn = self.function_map.get(fn_addr, None)
 		if fn is None:
@@ -63,9 +66,10 @@ class VTableDumper:
 		vtable_list = []
 		current_vtable_entries = []
 		
+		vtable_data = self.binary.get_content_from_virtual_address(vt.value, vt.size)
 		addrs = zip(
-			( offs + vt.value for offs in range(0, vt.size, 4) ),
-			( v for v, *_ in struct.iter_unpack('I', bytes(self.binary.get_content_from_virtual_address(vt.value, vt.size))) )
+			( itertools.count(vt.value, 4) ),
+			( v for v, *_ in struct.iter_unpack('I', bytes(vtable_data)) )
 		)
 		for raw_addr, fn_addr in addrs:
 			fn = self._get_function_from_raw_addr(raw_addr, fn_addr)
@@ -90,6 +94,7 @@ class VTableDumper:
 		next(next_iter, None)
 		for current, nextitem in itertools.zip_longest(current_iter, next_iter, fillvalue = None):
 			if nextitem is None:
+				# we've reached the base class
 				return current
 			vt_info = self.get_sym(f'_ZTV{nextitem}')
 			if (vt_info.size // 4) - 2 <= vti:
@@ -154,10 +159,10 @@ class VTableDumper:
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
 		"""
 		typeinfo = self.get_sym(f'_ZTI{typename}')
-		return self.get_class_hierarchy_internal(typeinfo.value)
+		return self._get_class_hierarchy_from_ptr(typeinfo.value)
 
 	@functools.cache
-	def get_class_hierarchy_internal(self, typeinfo_ptr):
+	def _get_class_hierarchy_from_ptr(self, typeinfo_ptr):
 		"""
 		Returns a list of mangled typenames in ascending order (towards base classes at the end).
 		This takes a pointer to the class's typeinfo structure.
@@ -167,11 +172,11 @@ class VTableDumper:
 		if typeinfo_class.symbol.name == '_ZTVN10__cxxabiv120__si_class_type_infoE':
 			# single inheritance
 			nested_typeinfo_ptr = self.dereference(typeinfo_ptr + 0x08)
-			return [ typeinfo_name ] + self.get_class_hierarchy_internal(nested_typeinfo_ptr)
+			return [ typeinfo_name ] + self._get_class_hierarchy_from_ptr(nested_typeinfo_ptr)
 		elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv121__vmi_class_type_infoE':
 			# multiple inheritance
 			nested_typeinfo_ptr = self.dereference(typeinfo_ptr + 0x10)
-			return [ typeinfo_name ] + self.get_class_hierarchy_internal(nested_typeinfo_ptr)
+			return [ typeinfo_name ] + self._get_class_hierarchy_from_ptr(nested_typeinfo_ptr)
 		elif typeinfo_class.symbol.name == '_ZTVN10__cxxabiv117__class_type_infoE':
 			return [ typeinfo_name ]
 		print('unknown typeinfo class', typeinfo_class)
