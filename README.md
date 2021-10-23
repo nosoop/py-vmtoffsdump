@@ -11,10 +11,27 @@ Originally written to automate the process of obtaining that info from Team Fort
 Depends on [LIEF][] for ELF parsing and [pydemangler][] for symbol demangling.
 
 ```
+# this will install vmtproc and its dependencies
+
 $ python -m pip install --user git+https://github.com/nosoop/py-vmtoffsdump
 ```
 
 The imported package is named `vmtproc`.
+
+Main usage:
+```python
+import lief
+import vmtproc
+
+binary = lief.parse(path_to_unstripped_linux_binary)
+processor = vmtproc.VTableProcessor(binary)
+
+vt_first, *vt_others = processor.get_class_vtables('10MyTypeName')
+print(vt_first)
+
+win_vt = list(processor.guesstimate_windows_mapping('10MyTypeName'))
+print(win_vt)
+```
 
 ## Licensing / Credits
 
