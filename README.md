@@ -33,6 +33,9 @@ win_vt = list(processor.guesstimate_windows_mapping('10MyTypeName'))
 print(win_vt)
 ```
 
+A `dump-binary-vtables` binary is also provided.  See `dump-binary-vtables --help` for more
+information.
+
 ## Licensing / Credits
 
 This repository is released under the MIT License.
