@@ -17,7 +17,7 @@ if __name__ == "__main__":
 	parser.add_argument('binary', help = "Binary file to validate", type = lief.parse)
 	args = parser.parse_args()
 	
-	vtable_handler = dumper.VTableDumper(args.binary)
+	vtable_handler = dumper.VTableProcessor(args.binary)
 	
 	def render_vtable(typename):
 		linux_vmt, *_ = vtable_handler.get_class_vtables(typename)
