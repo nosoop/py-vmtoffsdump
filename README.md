@@ -1,5 +1,14 @@
 # vmtproc
 
+> [!NOTE]
+> Team Fortress 2's 2024-04-18 update uncovered some problems with the assumptions this tool
+> relied on (due to new optimizations in place).  Because of that, and because the codebase is
+> kinda stinky in general, I've decided to archive this project.
+> 
+> Maybe I'll publish a replacement as an [angr][] analysis in the future.
+
+[angr]: https://github.com/angr/angr
+
 A Python library to read and dump information on virtual tables in an unstripped Linux binary.
 Is able to accurately guesstimate Windows virtual method offsets (at least more so than
 [vtable(.js)][]).
